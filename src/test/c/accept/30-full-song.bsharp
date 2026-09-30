@@ -1,0 +1,14 @@
+song "Midnight" {
+    tempo 120
+    time 4/4
+    key C major
+
+    section verse x2 {
+        | C | Am | F | G |
+    }
+
+    section chorus x2 {
+        | F | G | Em | Am |
+        | F | G | C  | C  |
+    }
+}

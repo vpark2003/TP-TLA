@@ -1,0 +1,8 @@
+song "Test" {
+    pattern intro {
+        | C | Am | F | G |
+    }
+    section verse {
+        use intro
+    }
+}

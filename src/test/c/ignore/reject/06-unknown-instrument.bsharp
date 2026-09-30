@@ -1,0 +1,7 @@
+song "Test" {
+    section verse {
+        track kazoo_galactico {
+            | C |
+        }
+    }
+}

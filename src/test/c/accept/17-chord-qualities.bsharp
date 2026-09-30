@@ -1,0 +1,5 @@
+song "Test" {
+    section verse {
+        | Bdim | Caug | Gsus4 | Cadd9 | Am7b5 | C+ |
+    }
+}

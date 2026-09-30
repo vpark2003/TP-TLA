@@ -3,7 +3,6 @@
 /* MODULE INTERNAL STATE */
 
 static bool _logIgnoredLexemes = true;
-static InputBuffer * _inputBuffer = NULL;
 static LexicalAnalyzer * _lexicalAnalyzer = NULL;
 static Logger * _logger = NULL;
 
@@ -14,15 +13,10 @@ void _shutdownFlexActionsModule() {
 		destroyLogger(_logger);
 		_logger = NULL;
 	}
-	if (_inputBuffer != NULL) {
-		destroyInputBuffer(_inputBuffer);
-		_inputBuffer = NULL;
-	}
 	_lexicalAnalyzer = NULL;
 }
 
 ModuleDestructor initializeFlexActionsModule(LexicalAnalyzer * lexicalAnalyzer) {
-	_inputBuffer = NULL;
 	_lexicalAnalyzer = lexicalAnalyzer;
 	_logger = createLogger("FlexActions");
 	_logIgnoredLexemes = getBooleanOrDefault("LOG_IGNORED_LEXEMES", _logIgnoredLexemes);
@@ -32,6 +26,8 @@ ModuleDestructor initializeFlexActionsModule(LexicalAnalyzer * lexicalAnalyzer) 
 /* PRIVATE FUNCTIONS */
 
 static void _logTokenAction(const char * actionName, Token * token);
+static char * _substring(const char * string, const unsigned int start, const unsigned int length);
+static CompilationStatus _pushAndDestroy(const char * actionName, Token * token);
 
 /**
  * Logs a lexical-analyzer action over a token in DEBUGGING level.
@@ -50,24 +46,57 @@ static void _logTokenAction(const char * actionName, Token * token) {
 	_lexeme = NULL;
 }
 
-/* PUBLIC FUNCTIONS */
-
-CompilationStatus ArithmeticOperatorLexemeAction(TokenLabel label) {
-	Token * token = createToken(_lexicalAnalyzer, label);
-	_logTokenAction(__FUNCTION__, token);
+/**
+ * Logs, pushes the token into the parser, and releases the token (but not the
+ * heap-memory referenced by its semantic value, that is now owned by Bison).
+ */
+static CompilationStatus _pushAndDestroy(const char * actionName, Token * token) {
+	_logTokenAction(actionName, token);
 	CompilationStatus status = pushToken(_lexicalAnalyzer, token);
 	destroyToken(token);
 	return status;
 }
 
-CompilationStatus EnterImportExpressionLexemeAction(FlexContext context) {
-	if (_logIgnoredLexemes) {
-		Token * token = createToken(_lexicalAnalyzer, OPEN_BRACE);
-		_logTokenAction(__FUNCTION__, token);
-		destroyToken(token);
-	}
+/**
+ * Returns a new heap-allocated copy of a portion of a string.
+ */
+static char * _substring(const char * string, const unsigned int start, const unsigned int length) {
+	char * result = calloc(length + 1, sizeof(char));
+	strncpy(result, string + start, length);
+	return result;
+}
+
+/* PUBLIC FUNCTIONS */
+
+/**
+ * The lexeme was already validated by the "chord" pattern in Flex, so its
+ * structure is known: a root note (1 or 2 characters), an optional quality
+ * and, optionally, "/" followed by the bass note. Here we only split it into
+ * its components so the AST can store them separately.
+ */
+CompilationStatus ChordLexemeAction() {
+	Token * token = createToken(_lexicalAnalyzer, CHORD);
+	const char * lexeme = token->lexeme;
+	const unsigned int length = token->length;
+	const unsigned int rootLength = (1 < length && (lexeme[1] == '#' || lexeme[1] == 'b')) ? 2 : 1;
+	const char * slash = strchr(lexeme, '/');
+	const unsigned int qualityEnd = (slash == NULL) ? length : (unsigned int) (slash - lexeme);
+	Chord * chord = calloc(1, sizeof(Chord));
+	chord->type = CHORD_SYMBOL;
+	chord->symbol = _substring(lexeme, 0, length);
+	chord->root = _substring(lexeme, 0, rootLength);
+	chord->quality = _substring(lexeme, rootLength, qualityEnd - rootLength);
+	chord->bass = (slash == NULL) ? NULL : _substring(slash, 1, strlen(slash) - 1);
+	token->semanticValue->chord = chord;
+	return _pushAndDestroy(__FUNCTION__, token);
+}
+
+CompilationStatus EnterKeyLexemeAction(FlexContext context) {
+	Token * token = createToken(_lexicalAnalyzer, KEY_KEYWORD);
+	token->semanticValue->token = KEY_KEYWORD;
+	CompilationStatus status = _pushAndDestroy(__FUNCTION__, token);
 	enterLexicalAnalyzerContext(_lexicalAnalyzer, context);
-	return IN_PROGRESS;
+	return status;
 }
 
 CompilationStatus EnterMultilineCommentLexemeAction(FlexContext context) {
@@ -96,6 +125,12 @@ CompilationStatus EOFLexemeAction() {
 	return status;
 }
 
+CompilationStatus IdentifierLexemeAction() {
+	Token * token = createToken(_lexicalAnalyzer, IDENTIFIER);
+	token->semanticValue->string = _substring(token->lexeme, 0, token->length);
+	return _pushAndDestroy(__FUNCTION__, token);
+}
+
 CompilationStatus IgnoredLexemeAction() {
 	if (_logIgnoredLexemes) {
 		Token * token = createToken(_lexicalAnalyzer, IGNORED);
@@ -108,21 +143,15 @@ CompilationStatus IgnoredLexemeAction() {
 CompilationStatus IntegerLexemeAction() {
 	Token * token = createToken(_lexicalAnalyzer, INTEGER);
 	token->semanticValue->integer = atoi(token->lexeme);
-	_logTokenAction(__FUNCTION__, token);
-	CompilationStatus status = pushToken(_lexicalAnalyzer, token);
-	destroyToken(token);
-	return status;
+	return _pushAndDestroy(__FUNCTION__, token);
 }
 
-CompilationStatus LeaveImportExpressionLexemeAction() {
-	pushInputBuffer(_inputBuffer);
+CompilationStatus LeaveKeyLexemeAction(TokenLabel label) {
+	Token * token = createToken(_lexicalAnalyzer, label);
+	token->semanticValue->token = label;
+	CompilationStatus status = _pushAndDestroy(__FUNCTION__, token);
 	leaveLexicalAnalyzerContext(_lexicalAnalyzer);
-	if (_logIgnoredLexemes) {
-		Token * token = createToken(_lexicalAnalyzer, CLOSE_BRACE);
-		_logTokenAction(__FUNCTION__, token);
-		destroyToken(token);
-	}
-	return IN_PROGRESS;
+	return status;
 }
 
 CompilationStatus LeaveMultilineCommentLexemeAction() {
@@ -135,27 +164,44 @@ CompilationStatus LeaveMultilineCommentLexemeAction() {
 	return IN_PROGRESS;
 }
 
-CompilationStatus ParenthesisLexemeAction(TokenLabel label) {
-	Token * token = createToken(_lexicalAnalyzer, label);
-	_logTokenAction(__FUNCTION__, token);
-	CompilationStatus status = pushToken(_lexicalAnalyzer, token);
-	destroyToken(token);
-	return status;
+CompilationStatus NoteLexemeAction() {
+	Token * token = createToken(_lexicalAnalyzer, NOTE);
+	token->semanticValue->string = _substring(token->lexeme, 0, token->length);
+	return _pushAndDestroy(__FUNCTION__, token);
 }
 
-CompilationStatus SubexpressionLexemeAction() {
-	Token * token = createToken(_lexicalAnalyzer, IGNORED);
-	_inputBuffer = createInputBuffer(_lexicalAnalyzer, token->lexeme);
-	if (_logIgnoredLexemes) {
-		_logTokenAction(__FUNCTION__, token);
-	}
-	destroyToken(token);
-	return IN_PROGRESS;
+/**
+ * Lexeme "xN": the value of N is kept as the semantic value. Validating that
+ * N is a positive natural number is a job for the semantic analysis.
+ */
+CompilationStatus RepetitionLexemeAction() {
+	Token * token = createToken(_lexicalAnalyzer, REPETITION);
+	token->semanticValue->integer = atoi(token->lexeme + 1);
+	return _pushAndDestroy(__FUNCTION__, token);
+}
+
+/**
+ * Lexeme "...": the semantic value is the content without the quotes.
+ */
+CompilationStatus StringLexemeAction() {
+	Token * token = createToken(_lexicalAnalyzer, STRING);
+	token->semanticValue->string = _substring(token->lexeme, 1, token->length - 2);
+	return _pushAndDestroy(__FUNCTION__, token);
+}
+
+CompilationStatus TokenLexemeAction(TokenLabel label) {
+	Token * token = createToken(_lexicalAnalyzer, label);
+	token->semanticValue->token = label;
+	return _pushAndDestroy(__FUNCTION__, token);
 }
 
 CompilationStatus UnknownLexemeAction() {
 	Token * token = createToken(_lexicalAnalyzer, UNKNOWN);
 	_logTokenAction(__FUNCTION__, token);
+	logError(_logger, "Unknown lexeme \"%s\" at line %d.", token->lexeme, token->line);
+	// Pushing the UNKNOWN token forces Bison to abort the parsing and release
+	// (through the "%destructor" directives) every semantic value in its stack.
+	pushToken(_lexicalAnalyzer, token);
 	destroyToken(token);
 	return FAILED;
 }

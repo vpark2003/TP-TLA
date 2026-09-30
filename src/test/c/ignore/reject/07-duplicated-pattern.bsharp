@@ -1,0 +1,4 @@
+song "Test" {
+    pattern intro { | C | }
+    pattern intro { | G | }
+}

@@ -1,0 +1,5 @@
+song "Test" {
+    section chorus x2 {
+        | C | G | Am | F |
+    }
+}

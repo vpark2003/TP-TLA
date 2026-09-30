@@ -1,0 +1,6 @@
+song "Test" {
+    time 4/4
+    section verse {
+        | C(3) G(2) |
+    }
+}

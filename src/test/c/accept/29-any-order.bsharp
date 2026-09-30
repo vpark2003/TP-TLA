@@ -1,0 +1,5 @@
+song "Test" {
+    section verse { | C | }
+    tempo 90
+    key G major
+}

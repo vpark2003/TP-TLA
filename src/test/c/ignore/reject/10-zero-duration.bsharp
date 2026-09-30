@@ -1,0 +1,5 @@
+song "Test" {
+    section verse {
+        | C(0) G(4) |
+    }
+}

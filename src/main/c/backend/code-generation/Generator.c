@@ -20,127 +20,111 @@ ModuleDestructor initializeGeneratorModule() {
 	return _shutdownGeneratorModule;
 }
 
-/** PRIVATE FUNCTIONS */
+/**
+ * PRIVATE FUNCTIONS
+ *
+ * Stage II: the "generator" prints the AST as an indented tree in the
+ * standard output, so it's possible to verify that the tree was properly
+ * built. In Stage III it will be replaced by the MIDI generation.
+ */
 
 static char * _indentation(const unsigned int indentationLevel);
-static const char _expressionTypeToCharacter(const ExpressionType type);
-static void _generateConstant(const unsigned int indentationLevel, Constant * constant);
-static void _generateEpilogue(const int value);
-static void _generateExpression(const unsigned int indentationLevel, Expression * expression);
-static void _generateFactor(const unsigned int indentationLevel, Factor * factor);
-static void _generateProgram(Program * program);
-static void _generatePrologue(void);
 static void _output(const unsigned int indentationLevel, const char * const format, ...);
+static void _printBar(const unsigned int level, Bar * bar);
+static void _printContent(const unsigned int level, Content * content);
+static void _printSection(const unsigned int level, Section * section);
+static void _printSong(const unsigned int level, Song * song);
+static void _printSongElement(const unsigned int level, SongElement * songElement);
 
-/**
- * Converts and expression type to the proper character of the operation
- * involved, or returns '\0' if that's not possible.
- */
-static const char _expressionTypeToCharacter(const ExpressionType type) {
-	switch (type) {
-		case ADDITION: return '+';
-		case DIVISION: return '/';
-		case MULTIPLICATION: return '*';
-		case SUBTRACTION: return '-';
-		default:
-			logError(_logger, "The specified expression type cannot be converted into character: %d", type);
-			return '\0';
+static void _printBar(const unsigned int level, Bar * bar) {
+	_output(level, "Bar (%u chord%s)\n", bar->entries, bar->entries == 1 ? "" : "s");
+	for (ChordEntry * entry = bar->firstEntry; entry != NULL; entry = entry->next) {
+		Chord * chord = entry->chord;
+		char duration[32] = "";
+		if (entry->hasDuration) {
+			snprintf(duration, sizeof(duration), ", duration=%d", entry->duration);
+		}
+		if (chord->type == NO_CHORD_SYMBOL) {
+			_output(1 + level, "NoChord(N.C.%s)\n", duration);
+		}
+		else {
+			_output(1 + level, "Chord(symbol=%s, root=%s, quality=\"%s\", bass=%s%s)\n",
+				chord->symbol, chord->root, chord->quality,
+				chord->bass == NULL ? "-" : chord->bass, duration);
+		}
 	}
 }
 
-/**
- * Generates the output of a constant.
- */
-static void _generateConstant(const unsigned int indentationLevel, Constant * constant) {
-	_output(indentationLevel, "%s", "[ $C$, circle, draw, black!20\n");
-	_output(1 + indentationLevel, "%s%d%s", "[ $", constant->value, "$, circle, draw ]\n");
-	_output(indentationLevel, "%s", "]\n");
+static void _printContent(const unsigned int level, Content * content) {
+	for (ContentElement * element = content->first; element != NULL; element = element->next) {
+		switch (element->type) {
+			case BAR_ELEMENT:
+				_printBar(level, element->bar);
+				break;
+			case PATTERN_USAGE_ELEMENT:
+				_output(level, "Use(pattern=%s, repetitions=%d)\n",
+					element->patternUsage->name, element->patternUsage->repetitions);
+				break;
+			default:
+				logError(_logger, "Unknown content element type: %d", element->type);
+				break;
+		}
+	}
 }
 
-/**
- * Creates the epilogue of the generated output, that is, the final lines that
- * completes a valid Latex document.
- */
-static void _generateEpilogue(const int value) {
-	_output(0, "%s%d%s",
-		"            [ $", value, "$, circle, draw, blue ]\n"
-		"        ]\n"
-		"    \\end{forest}\n"
-		"\\end{document}\n\n"
-	);
-}
-
-/**
- * Generates the output of an expression.
- */
-static void _generateExpression(const unsigned int indentationLevel, Expression * expression) {
-	_output(indentationLevel, "%s", "[ $E$, circle, draw, black!20\n");
-	switch (expression->type) {
-		case ADDITION:
-		case DIVISION:
-		case MULTIPLICATION:
-		case SUBTRACTION:
-			_generateExpression(1 + indentationLevel, expression->leftExpression);
-			_output(1 + indentationLevel, "%s%c%s", "[ $", _expressionTypeToCharacter(expression->type), "$, circle, draw, purple ]\n");
-			_generateExpression(1 + indentationLevel, expression->rightExpression);
+static void _printSection(const unsigned int level, Section * section) {
+	_output(level, "Section(name=%s, repetitions=%d)\n", section->name, section->repetitions);
+	switch (section->bodyType) {
+		case CONTENT_BODY:
+			_printContent(1 + level, section->content);
 			break;
-		case FACTOR:
-			_generateFactor(1 + indentationLevel, expression->factor);
-			break;
-		default:
-			logError(_logger, "The specified expression type is unknown: %d", expression->type);
+		case TRACKS_BODY:
+			for (Track * track = section->trackList->first; track != NULL; track = track->next) {
+				_output(1 + level, "Track(instrument=%s)\n", track->instrument);
+				_printContent(2 + level, track->content);
+			}
 			break;
 	}
-	_output(indentationLevel, "%s", "]\n");
 }
 
-/**
- * Generates the output of a factor.
- */
-static void _generateFactor(const unsigned int indentationLevel, Factor * factor) {
-	_output(indentationLevel, "%s", "[ $F$, circle, draw, black!20\n");
-	switch (factor->type) {
-		case CONSTANT:
-			_generateConstant(1 + indentationLevel, factor->constant);
+static void _printSongElement(const unsigned int level, SongElement * songElement) {
+	switch (songElement->type) {
+		case AUTHOR_ELEMENT:
+			_output(level, "Author(\"%s\")\n", songElement->text);
 			break;
-		case EXPRESSION:
-			_output(1 + indentationLevel, "%s", "[ $($, circle, draw, purple ]\n");
-			_generateExpression(1 + indentationLevel, factor->expression);
-			_output(1 + indentationLevel, "%s", "[ $)$, circle, draw, purple ]\n");
+		case COPYRIGHT_ELEMENT:
+			_output(level, "Copyright(\"%s\")\n", songElement->text);
+			break;
+		case KEY_ELEMENT:
+			_output(level, "Key(note=%s, mode=%s)\n", songElement->key->note,
+				songElement->key->mode == MAJOR_MODE ? "major" : "minor");
+			break;
+		case PATTERN_ELEMENT:
+			_output(level, "Pattern(name=%s)\n", songElement->pattern->name);
+			_printContent(1 + level, songElement->pattern->content);
+			break;
+		case SECTION_ELEMENT:
+			_printSection(level, songElement->section);
+			break;
+		case TEMPO_ELEMENT:
+			_output(level, "Tempo(%d)\n", songElement->tempo);
+			break;
+		case TIME_SIGNATURE_ELEMENT:
+			_output(level, "TimeSignature(%d/%d)\n",
+				songElement->timeSignature->numerator,
+				songElement->timeSignature->denominator);
 			break;
 		default:
-			logError(_logger, "The specified factor type is unknown: %d", factor->type);
+			logError(_logger, "Unknown song element type: %d", songElement->type);
 			break;
 	}
-	_output(indentationLevel, "%s", "]\n");
 }
 
-/**
- * Generates the output of the program.
- */
-static void _generateProgram(Program * program) {
-	_generateExpression(3, program->expression);
-}
-
-/**
- * Creates the prologue of the generated output, a Latex document that renders
- * a tree thanks to the Forest package.
- *
- * @see https://ctan.dcc.uchile.cl/graphics/pgf/contrib/forest/forest-doc.pdf
- */
-static void _generatePrologue(void) {
-	_output(0, "%s",
-		"\\documentclass{standalone}\n\n"
-		"\\usepackage[utf8]{inputenc}\n"
-		"\\usepackage[T1]{fontenc}\n"
-		"\\usepackage{amsmath}\n"
-		"\\usepackage{forest}\n"
-		"\\usepackage{microtype}\n\n"
-		"\\begin{document}\n"
-		"    \\centering\n"
-		"    \\begin{forest}\n"
-		"        [ \\text{$=$}, circle, draw, purple\n"
-	);
+static void _printSong(const unsigned int level, Song * song) {
+	_output(level, "Song(name=\"%s\")\n", song->name);
+	for (SongElement * element = song->firstElement; element != NULL; element = element->next) {
+		_printSongElement(1 + level, element);
+	}
 }
 
 /**
@@ -170,9 +154,9 @@ static void _output(const unsigned int indentationLevel, const char * const form
 /** PUBLIC FUNCTIONS */
 
 void executeGenerator(CompilerState * compilerState) {
-	logDebugging(_logger, "Generating final output...");
-	_generatePrologue();
-	_generateProgram(compilerState->abstractSyntaxtTree);
-	_generateEpilogue(compilerState->value);
+	logDebugging(_logger, "Printing the AST...");
+	Program * program = compilerState->abstractSyntaxtTree;
+	_output(0, "%s", "Program\n");
+	_printSong(1, program->song);
 	logDebugging(_logger, "Generation is done.");
 }

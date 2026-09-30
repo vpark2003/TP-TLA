@@ -1,0 +1,4 @@
+song "Test" {
+    tempo 120
+    tempo 90
+}

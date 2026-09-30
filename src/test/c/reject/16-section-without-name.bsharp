@@ -1,0 +1,5 @@
+song "Test" {
+    section x2 {
+        | C |
+    }
+}

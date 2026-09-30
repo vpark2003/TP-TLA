@@ -1,0 +1,7 @@
+song "Test" {
+    section verse {
+        track piano {
+            | C | Am | F | G |
+        }
+    }
+}

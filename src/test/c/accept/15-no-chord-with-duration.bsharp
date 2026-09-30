@@ -1,0 +1,5 @@
+song "Test" {
+    section intro {
+        | N.C.(2) C(2) |
+    }
+}

@@ -1,0 +1,34 @@
+// B# - G-141
+song "Summer Lights" {
+    author "B# Team"
+    copyright "CC BY 4.0"
+    tempo 128
+    time 4/4
+    key C major
+
+    pattern turnaround {
+        | Fmaj7 | G7 | Em7 | Am7 |
+    }
+
+    section intro {
+        | N.C. | C | Am | G |
+    }
+
+    section verse {
+        | C(2) G(2) |
+        | Am(2) F(2) |
+        | C/E |
+        | G7 |
+    }
+
+    section chorus x2 {
+        track piano {
+            use turnaround
+            | N.C. | G7 | C | C |
+        }
+        track bass {
+            | F | G | E | A |
+            | N.C. | G | C | C |
+        }
+    }
+}

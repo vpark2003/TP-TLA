@@ -1,0 +1,10 @@
+song "Test" {
+    pattern riff {
+        | C(2) G(2) |
+    }
+    section verse x2 {
+        track guitar {
+            use riff x4
+        }
+    }
+}
