@@ -1,0 +1,6 @@
+song "Test" {
+    key A minor
+    section verse {
+        | Am | Dm | E7 | Am |
+    }
+}

@@ -1,0 +1,10 @@
+song "Test" {
+    pattern cell { | C | G | }
+    pattern phrase {
+        use cell x2
+        | F | G |
+    }
+    section verse {
+        use phrase
+    }
+}

@@ -1,0 +1,4 @@
+song "Test" {
+    pattern a { use b }
+    pattern b { use a }
+}

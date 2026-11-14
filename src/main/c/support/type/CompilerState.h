@@ -12,6 +12,11 @@ typedef struct {
 	void * abstractSyntaxtTree;
 	SymbolTable *symbolTable; // TODO (Stage III): Add a symbol table (patterns, sections, instruments).
 	// TODO (Stage III): Add the semantic information needed to generate the MIDI.
+
+	/**
+	 * Path of the MIDI file to generate.
+	 */
+	const char * outputPath;
 } CompilerState;
 
 #endif

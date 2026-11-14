@@ -1,0 +1,4 @@
+song "Test" {
+    section verse { use riff }
+    pattern riff { | C | G | }
+}

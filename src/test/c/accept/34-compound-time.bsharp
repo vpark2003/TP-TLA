@@ -1,0 +1,7 @@
+song "Test" {
+    tempo 90
+    time 6/8
+    section verse {
+        | C(3) G(3) | Am |
+    }
+}

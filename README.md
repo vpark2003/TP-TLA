@@ -6,23 +6,34 @@
 
 Lenguaje de dominio específico (DSL, *Domain Specific Language*) para describir la estructura armónica de canciones en formato *lead sheet*. Grupo **G-141**.
 
-* [Estado: Stage II](#estado-stage-ii)
+* [Uso](#uso)
 * [Ejemplo](#ejemplo)
 * [Gramática](#gramática)
+* [Análisis semántico](#análisis-semántico)
+* [Generación de código](#generación-de-código)
 * [Decisiones de diseño](#decisiones-de-diseño)
 * [Casos de prueba](#casos-de-prueba)
 
-## Estado: Stage II
+## Uso
 
-El *frontend* está completo: el analizador léxico (Flex) transforma el programa en un *stream* de *tokens*, y el analizador sintáctico (Bison) construye el AST (Árbol de Sintaxis Abstracta). Mientras no exista el *backend*, el compilador imprime el AST por salida estándar:
+El compilador lee un programa B# por entrada estándar, lo valida y genera un archivo MIDI (*Musical Instrument Digital Interface*). El primer argumento es la ruta del archivo de salida (por defecto, `output.mid`):
 
 ```bash
 src/main/bash/build.sh
-LOGGING_LEVEL=ERROR src/main/bash/run.sh src/test/c/accept/31-full-song-extended.bsharp
+LOGGING_LEVEL=INFORMATION src/main/bash/run.sh src/test/c/accept/31-full-song-extended.bsharp song.mid
 src/main/bash/test.sh
 ```
 
-El análisis semántico (duración de los compases, repeticiones positivas, patrones definidos, instrumentos válidos, etc.) y la generación del archivo MIDI (*Musical Instrument Digital Interface*) corresponden al Stage III.
+El código de salida es `0` si el programa es aceptado y `1` si se rechaza (por un error léxico, sintáctico o semántico). 
+
+Fases del compilador:
+
+1. **Análisis léxico** (`frontend/lexical-analysis`): Flex transforma el programa en un *stream* de *tokens*.
+2. **Análisis sintáctico** (`frontend/syntactic-analysis`): Bison construye el AST (Árbol de Sintaxis Abstracta).
+3. **Análisis semántico** (`backend/semantic-analysis`): valida el AST y construye la tabla de símbolos (patrones y secciones).
+4. **Generación de código** (`backend/code-generation`): escribe un *Standard MIDI File*. El conocimiento musical compartido (notas, cualidades de acordes, instrumentos y tonalidades) está en `backend/domain`.
+
+No se utilizan librerías externas: el archivo MIDI se escribe byte a byte.
 
 ## Ejemplo
 
@@ -108,6 +119,40 @@ chord         → CHORD | NO_CHORD
 
 La gramática no tiene conflictos *shift/reduce* ni *reduce/reduce*.
 
+## Análisis semántico
+
+Valores por defecto: `tempo 120`, `time 4/4` y sin tonalidad. Las declaraciones globales pueden aparecer en cualquier orden, y un patrón puede usarse antes de definirse.
+
+El análisis semántico (`backend/semantic-analysis`) construye una tabla de símbolos (`SymbolTable`) con los patrones y las secciones, y rechaza el programa si:
+
+| Regla | Ejemplo rechazado |
+| :-- | :-- |
+| Un patrón o una sección repite un nombre ya usado. | `pattern intro { ... }` `pattern intro { ... }` |
+| Se usa un patrón que no está definido. | `use missing` |
+| Una duración explícita no es positiva. | `C(0)` |
+| El numerador del compás no es positivo, o el denominador no es potencia de dos. | `time 4/3`, `time 0/4` |
+
+El generador rechaza además los valores que MIDI no puede representar, como un tempo que no es positivo (`tempo 0`).
+
+**Duración de los acordes en un compás.** Los acordes con duración explícita (`C(2)`) ocupan esa cantidad de tiempos. Los tiempos restantes del compás se reparten en partes iguales entre los acordes sin duración, con al menos 1 tiempo cada uno. Así, en 4/4, `| C |` equivale a `| C(4) |`, `| C G |` a `| C(2) G(2) |`, y `| Am F(2) G |` a `| Am(1) F(2) G(1) |`.
+
+**Validaciones pendientes** (sus casos están en `src/test/c/ignore/reject` y hoy se aceptan): que los tiempos de cada compás sumen exactamente el numerador, repeticiones `xN` entre 1 y 100, rango del tempo, declaraciones globales duplicadas, cualidades de acorde e instrumentos válidos, ciclos entre patrones, pistas paralelas del mismo largo y sin instrumentos repetidos, y tonalidades teóricas. Mientras tanto, el generador es tolerante: una cualidad desconocida suena como tríada mayor, un instrumento desconocido como `piano`, y un anidamiento de patrones de más de 64 niveles (un ciclo) se rechaza.
+
+**Cualidades soportadas:** mayor (vacía, `M`, `maj`), `m`, `min`, `dim`, `aug`, `+`, `sus`, `sus2`, `sus4`, `5`, `6`, `m6`, `7`, `maj7`, `M7`, `m7`, `min7`, `mmaj7`, `mM7`, `dim7`, `m7b5`, `aug7`, `+7`, `7#5`, `7b5`, `7sus4`, `add9`, `madd9`, `9`, `maj9`, `m9`, `7b9`, `7#9`, `11`, `m11`, `13`, `maj13` y `m13`.
+
+**Instrumentos soportados:** `piano`, `epiano`, `harpsichord`, `vibraphone`, `marimba`, `organ`, `accordion`, `guitar`, `acoustic_guitar`, `electric_guitar`, `acoustic_bass`, `bass`, `violin`, `viola`, `cello`, `contrabass`, `harp`, `strings`, `choir`, `trumpet`, `trombone`, `brass`, `sax`, `clarinet`, `flute`, `synth` y `pad`.
+
+## Generación de código
+
+El compilador genera un *Standard MIDI File* de formato 1, con 480 *ticks* por negra:
+
+* **Pista de director:** nombre de la canción, autor (evento de texto), *copyright*, tempo, compás y armadura de clave.
+* **Una pista por instrumento**, cada una en su propio canal (se saltea el canal 10, reservado a percusión) y con su programa de General MIDI. Las secciones sin `track` usan `piano`.
+* **Tempo:** el BPM se interpreta sobre la figura del denominador (en 6/8, `tempo 90` son 90 corcheas por minuto).
+* **Acordes:** los instrumentos armónicos tocan todas las notas del acorde a partir de C3; si el acorde tiene bajo (`C/E`), el bajo se agrega una octava más abajo. Los instrumentos graves (`bass`, `acoustic_bass`, `contrabass`) tocan solo el bajo del acorde (la nota después de `/`, o la raíz), entre E1 y D#2.
+* **`N.C.`** genera silencio durante su duración.
+* **Secciones y patrones:** las secciones se concatenan en el orden en que aparecen, cada una repetida `xN` veces; los `use` se expanden en el lugar; las pistas de una misma sección empiezan en el mismo instante.
+
 ## Decisiones de diseño
 
 * **Sin punto y coma.** Se mantiene la sintaxis propuesta en el Stage I (`tempo 120`, `time 4/4`, `key C major`): cada construcción empieza con una palabra reservada y tiene una cantidad fija de elementos, por lo que no hace falta un separador.
@@ -118,15 +163,15 @@ La gramática no tiene conflictos *shift/reduce* ni *reduce/reduce*.
 * **Reutilización con `pattern` / `use`.** Un `pattern` define un fragmento con nombre que después se reutiliza con `use nombre`, opcionalmente con repeticiones (`use intro x2`).
 * **Instrumentos en paralelo con `track`.** Una sección puede contener compases directamente o una o más pistas (`track piano { ... }`). Las pistas de una misma sección suenan en paralelo. No se permite mezclar compases sueltos y pistas en la misma sección.
 * **Doble barra.** `| C || G |` equivale a dos líneas de compases seguidas (`| C |` y `| G |`), igual que la doble barra en una partitura. Un compás vacío (`| |`) se rechaza.
-* **Validaciones que quedan para el Stage III.** Que `xN` y las duraciones sean naturales positivos, que el denominador del compás sea potencia de dos, que los tiempos de cada compás sumen lo que indica `time`, que los patrones usados estén definidos, que el instrumento exista, etc. Estos casos están en `src/test/c/ignore/reject` y hoy se aceptan (falso positivo).
+* **Validaciones en el análisis semántico.** La gramática acepta cualquier entero en `xN`, en las duraciones y en `time`, y cualquier combinación de letras como cualidad del acorde; los rangos válidos (los tipos "privados" como natural positivo o potencia de dos) se validan después del análisis sintáctico.
 
 ## Casos de prueba
 
 | Carpeta | Contenido |
 | :-- | :-- |
 | `src/test/c/accept` | Programas que el compilador debe aceptar. |
-| `src/test/c/reject` | Programas con errores léxicos o sintácticos que el compilador debe rechazar. |
-| `src/test/c/ignore/reject` | Programas con errores semánticos. Se habilitarán en el Stage III. |
+| `src/test/c/reject` | Programas con errores léxicos o sintácticos (`01`–`29`) o semánticos (`30`–`35`) que el compilador debe rechazar. |
+| `src/test/c/ignore/reject` | Programas con errores semánticos cuya validación todavía no está implementada. |
 
 ## Proyecto base: Flex-Bison-Compiler
 

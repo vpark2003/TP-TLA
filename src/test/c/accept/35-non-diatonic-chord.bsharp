@@ -1,0 +1,6 @@
+song "Test" {
+    key C major
+    section verse {
+        | C | Bb | F | C |
+    }
+}

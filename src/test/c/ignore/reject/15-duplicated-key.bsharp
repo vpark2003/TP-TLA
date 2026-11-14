@@ -1,0 +1,4 @@
+song "Test" {
+    key C major
+    key A minor
+}

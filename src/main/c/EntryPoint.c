@@ -20,7 +20,8 @@ const int main(const int length, const char ** arguments) {
 		logDebugging(logger, "Argument %d: \"%s\"", k, arguments[k]);
 	}
 	CompilerState compilerState = {
-		.abstractSyntaxtTree = NULL
+		.abstractSyntaxtTree = NULL,
+		.outputPath = 1 < length ? arguments[1] : DEFAULT_OUTPUT_PATH
 	};
 	ModuleDestructor moduleDestructors[] = {
 		initializeAbstractSyntaxTreeModule(),
@@ -34,7 +35,7 @@ const int main(const int length, const char ** arguments) {
 	if (compilationStatus == SUCCEEDED) {
 
     	if (executeSemanticAnalysis(&compilerState)) {
-        	executeGenerator(&compilerState);
+        	compilationStatus = executeGenerator(&compilerState);
     	}
     	else {
 			logError(logger, "The semantic-analysis phase rejects the input program.");

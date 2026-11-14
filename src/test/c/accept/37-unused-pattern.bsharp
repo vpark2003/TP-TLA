@@ -1,0 +1,4 @@
+song "Test" {
+    pattern unused { | C | }
+    section verse { | G | }
+}
