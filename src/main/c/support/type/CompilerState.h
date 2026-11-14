@@ -1,6 +1,6 @@
 #ifndef COMPILER_STATE_HEADER
 #define COMPILER_STATE_HEADER
-#include "SymbolTable.h"
+#include "../../backend/semantic-analysis/SymbolTable.h"
 /**
  * The global state of the compiler. Should transport every data structure
  * needed across the different phases of a compilation.

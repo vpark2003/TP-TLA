@@ -84,3 +84,26 @@ Symbol *findSymbol(SymbolTable *table, const char *name, SymbolType type){
 
     return NULL;
 };
+
+static void freeSymbols(Symbol *current) {
+
+    if (current == NULL) {
+        return;
+    }
+
+    freeSymbols(current->next);
+
+    free(current->name);
+    free(current);
+}
+
+void freeSymbolTable(SymbolTable *table) {
+
+    if (table == NULL) {
+        return;
+    }
+
+    freeSymbols(table->first);
+
+    free(table);
+}

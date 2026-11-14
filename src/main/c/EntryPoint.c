@@ -6,6 +6,7 @@
 #include "support/type/CompilationStatus.h"
 #include "support/type/CompilerState.h"
 #include "support/type/ModuleDestructor.h"
+#include "backend/semantic-analysis/SemanticAnalyzer.h"
 
 /**
  * The main entry-point of the entire application. If you use "strtok" to
@@ -31,19 +32,23 @@ const int main(const int length, const char ** arguments) {
 	CompilationStatus compilationStatus = executeSyntacticAnalysis();
 	Program * program = compilerState.abstractSyntaxtTree;
 	if (compilationStatus == SUCCEEDED) {
-		// ----------------------------------------------------------------------------------------
-		// Beginning of the Backend... ------------------------------------------------------------
-		// Stage II: the backend only prints the AST. The semantic analysis and the MIDI
-		// generation will be added in Stage III.
-		executeGenerator(&compilerState);
-		// ...end of the Backend. -----------------------------------------------------------------
-		// ----------------------------------------------------------------------------------------
+
+    	if (executeSemanticAnalysis(&compilerState)) {
+        	executeGenerator(&compilerState);
+    	}
+    	else {
+			logError(logger, "The semantic-analysis phase rejects the input program.");
+			compilationStatus = FAILED;
+    	}
+
 	}
 	else {
 		logError(logger, "The syntactic-analysis phase rejects the input program.");
 		compilationStatus = FAILED;
 	}
 	logDebugging(logger, "Releasing AST resources...");
+	freeSymbolTable(compilerState.symbolTable);
+	compilerState.symbolTable = NULL;
 	destroyProgram(program);
 	for (int k = (sizeof(moduleDestructors)/sizeof(ModuleDestructor)) - 1; 0 <= k; --k) {
 		moduleDestructors[k]();
