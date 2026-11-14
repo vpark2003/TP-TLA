@@ -30,7 +30,7 @@ Fases del compilador:
 
 1. **Análisis léxico** (`frontend/lexical-analysis`): Flex transforma el programa en un *stream* de *tokens*.
 2. **Análisis sintáctico** (`frontend/syntactic-analysis`): Bison construye el AST (Árbol de Sintaxis Abstracta).
-3. **Análisis semántico** (`backend/semantic-analysis`): valida el AST y construye la tabla de símbolos (patrones y secciones).
+3. **Análisis semántico** (`backend/semantic-analysis`): valida el AST contra las reglas del dominio y construye la tabla de símbolos (patrones y secciones).
 4. **Generación de código** (`backend/code-generation`): escribe un *Standard MIDI File*. El conocimiento musical compartido (notas, cualidades de acordes, instrumentos y tonalidades) está en `backend/domain`.
 
 No se utilizan librerías externas: el archivo MIDI se escribe byte a byte.
@@ -123,20 +123,29 @@ La gramática no tiene conflictos *shift/reduce* ni *reduce/reduce*.
 
 Valores por defecto: `tempo 120`, `time 4/4` y sin tonalidad. Las declaraciones globales pueden aparecer en cualquier orden, y un patrón puede usarse antes de definirse.
 
-El análisis semántico (`backend/semantic-analysis`) construye una tabla de símbolos (`SymbolTable`) con los patrones y las secciones, y rechaza el programa si:
+El análisis semántico (`backend/semantic-analysis`) registra los patrones y las secciones en una tabla de símbolos (`SymbolTable`), que después usa el generador para expandir cada `use`. Una sección puede repetir el nombre de otra (`verse`, `chorus`, `verse`). Cada error indica la sección, la pista y el número de compás donde ocurre.
+
+**Errores (el programa se rechaza):**
 
 | Regla | Ejemplo rechazado |
 | :-- | :-- |
-| Un patrón o una sección repite un nombre ya usado. | `pattern intro { ... }` `pattern intro { ... }` |
-| Se usa un patrón que no está definido. | `use missing` |
-| Una duración explícita no es positiva. | `C(0)` |
-| El numerador del compás no es positivo, o el denominador no es potencia de dos. | `time 4/3`, `time 0/4` |
+| `tempo`, `time`, `key`, `author` y `copyright` se declaran a lo sumo una vez. | `tempo 120` `tempo 90` |
+| El tempo está entre 20 y 400 BPM (*Beats Per Minute*). | `tempo 0` |
+| El numerador del compás está entre 1 y 32; el denominador es 1, 2, 4, 8, 16 o 32. | `time 4/3` |
+| La tonalidad no puede ser teórica (más de 7 alteraciones). | `key G# major` |
+| Las repeticiones `xN` de secciones y de `use` son naturales entre 1 y 100. | `section chorus x0` |
+| Las duraciones explícitas son de al menos 1 tiempo. | `C(0)` |
+| Los tiempos de cada compás suman exactamente el numerador del compás (ver abajo). | `\| C(3) G(2) \|` en 4/4 |
+| La cualidad del acorde es una de las soportadas. | `Cmmm` |
+| Los patrones tienen nombres únicos, los usados están definidos y no hay ciclos. | `pattern a { use b }` `pattern b { use a }` |
+| Los instrumentos existen y no se repiten dentro de una sección. | `track kazoo { ... }` |
+| Las pistas paralelas de una sección tienen la misma cantidad de compases (expandiendo patrones). | `track piano { \| C \| G \| }` `track bass { \| C \| }` |
+| Hay a lo sumo 15 instrumentos distintos (canales MIDI, sin el de percusión). | — |
+| La canción expandida tiene a lo sumo 10000 compases. | — |
 
-El generador rechaza además los valores que MIDI no puede representar, como un tempo que no es positivo (`tempo 0`).
+**Duración de los acordes en un compás.** Los acordes con duración explícita (`C(2)`) ocupan esa cantidad de tiempos. Los tiempos restantes se reparten en partes iguales entre los acordes sin duración; si no se pueden repartir de forma exacta, es un error. Así, en 4/4, `| C |` equivale a `| C(4) |`, `| C G |` a `| C(2) G(2) |`, y `| Am F(2) G |` a `| Am(1) F(2) G(1) |`; en cambio, `| C G A |` se rechaza.
 
-**Duración de los acordes en un compás.** Los acordes con duración explícita (`C(2)`) ocupan esa cantidad de tiempos. Los tiempos restantes del compás se reparten en partes iguales entre los acordes sin duración, con al menos 1 tiempo cada uno. Así, en 4/4, `| C |` equivale a `| C(4) |`, `| C G |` a `| C(2) G(2) |`, y `| Am F(2) G |` a `| Am(1) F(2) G(1) |`.
-
-**Validaciones pendientes** (sus casos están en `src/test/c/ignore/reject` y hoy se aceptan): que los tiempos de cada compás sumen exactamente el numerador, repeticiones `xN` entre 1 y 100, rango del tempo, declaraciones globales duplicadas, cualidades de acorde e instrumentos válidos, ciclos entre patrones, pistas paralelas del mismo largo y sin instrumentos repetidos, y tonalidades teóricas. Mientras tanto, el generador es tolerante: una cualidad desconocida suena como tríada mayor, un instrumento desconocido como `piano`, y un anidamiento de patrones de más de 64 niveles (un ciclo) se rechaza.
+**Advertencias (el programa se acepta):** acordes no diatónicos (alguna de sus notas no pertenece a la escala de la tonalidad declarada; en tonalidades menores se acepta también la sensible, para que `E7` sea diatónico en `A minor`), patrones definidos y nunca usados, y canciones sin secciones.
 
 **Cualidades soportadas:** mayor (vacía, `M`, `maj`), `m`, `min`, `dim`, `aug`, `+`, `sus`, `sus2`, `sus4`, `5`, `6`, `m6`, `7`, `maj7`, `M7`, `m7`, `min7`, `mmaj7`, `mM7`, `dim7`, `m7b5`, `aug7`, `+7`, `7#5`, `7b5`, `7sus4`, `add9`, `madd9`, `9`, `maj9`, `m9`, `7b9`, `7#9`, `11`, `m11`, `13`, `maj13` y `m13`.
 
@@ -170,8 +179,7 @@ El compilador genera un *Standard MIDI File* de formato 1, con 480 *ticks* por n
 | Carpeta | Contenido |
 | :-- | :-- |
 | `src/test/c/accept` | Programas que el compilador debe aceptar. |
-| `src/test/c/reject` | Programas con errores léxicos o sintácticos (`01`–`29`) o semánticos (`30`–`35`) que el compilador debe rechazar. |
-| `src/test/c/ignore/reject` | Programas con errores semánticos cuya validación todavía no está implementada. |
+| `src/test/c/reject` | Programas con errores léxicos o sintácticos (`01`–`29`) o semánticos (`30`–`50`) que el compilador debe rechazar. |
 
 ## Proyecto base: Flex-Bison-Compiler
 

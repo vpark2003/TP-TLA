@@ -1,0 +1,4 @@
+song "Test" {
+    pattern chorus { | F | G | }
+    section chorus { use chorus }
+}

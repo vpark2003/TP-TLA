@@ -15,17 +15,17 @@ SymbolTable *createSymbolTable(void) {
     return table;
 }
 
-static bool searchByName(Symbol *current, const char *name) {
+static bool searchByName(Symbol *current, const char *name, SymbolType type) {
 
     if (current == NULL) {
         return false;
     }
 
-    if (strcmp(current->name, name) == 0) {
+    if (strcmp(current->name, name) == 0 && current->type == type) {
         return true;
     }
 
-    return searchByName(current->next, name);
+    return searchByName(current->next, name, type);
 }
 
 bool insertSymbol(SymbolTable *table, const char *name, SymbolType type,
@@ -36,7 +36,7 @@ bool insertSymbol(SymbolTable *table, const char *name, SymbolType type,
     }
 
 
-    if(searchByName(table->first, name)) {
+    if(searchByName(table->first, name, type)) {
         return false;
     }
 
