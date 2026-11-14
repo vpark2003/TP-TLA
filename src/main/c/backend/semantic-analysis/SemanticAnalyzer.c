@@ -110,13 +110,32 @@ static bool _validateSection(Section *section, SymbolTable *table) {
 }
 
 /* Segunda pasada: valida los use de patrones y secciones */
+static bool _validateTimeSignature(TimeSignature *timeSignature) {
+
+    if (timeSignature == NULL) {
+        return false;
+    }
+
+    if (timeSignature->numerator <= 0 ||
+        timeSignature->denominator <= 0) {
+        return false;
+    }
+
+    int denominator = timeSignature->denominator;
+
+    while (denominator % 2 == 0) {
+        denominator = denominator / 2;
+    }
+
+    return denominator == 1;
+}
 
 static bool _validateSongElements(SongElement *element, SymbolTable *table) {
 
     if (element == NULL) {
         return true;
     }
-
+    
     switch (element->type) {
 
         case PATTERN_ELEMENT:
@@ -127,6 +146,12 @@ static bool _validateSongElements(SongElement *element, SymbolTable *table) {
 
         case SECTION_ELEMENT:
             if (!_validateSection(element->section, table)) {
+                return false;
+            }
+            break;
+
+        case TIME_SIGNATURE_ELEMENT:
+            if (!_validateTimeSignature(element->timeSignature)) {
                 return false;
             }
             break;
