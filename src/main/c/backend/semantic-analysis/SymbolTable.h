@@ -2,7 +2,6 @@
 #define SYMBOL_TABLE_H
 
 #include <stdbool.h>
-#endif
 
 typedef enum {
     SYMBOL_PATTERN,
@@ -28,3 +27,5 @@ bool insertSymbol(SymbolTable *table, const char *name, SymbolType type, void *d
 Symbol *findSymbol(SymbolTable *table, const char *name, SymbolType type);
 
 void freeSymbolTable(SymbolTable *table);
+
+#endif
