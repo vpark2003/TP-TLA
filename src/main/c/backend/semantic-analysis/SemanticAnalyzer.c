@@ -1,4 +1,4 @@
-#include <stdio.h>
+
 #include "SemanticAnalyzer.h"
 #include "SymbolTable.h"
 
@@ -13,6 +13,28 @@ static bool _validatePatternUsage(PatternUsage *usage, SymbolTable *table) {
     return findSymbol(table, usage->name, SYMBOL_PATTERN) != NULL;
 }
 
+static bool _validateChordEntries(ChordEntry *entry) {
+
+    if (entry == NULL) {
+        return true;
+    }
+
+    if (entry->hasDuration && entry->duration <= 0) {
+        return false;
+    }
+
+    return _validateChordEntries(entry->next);
+}
+
+static bool _validateBar(Bar *bar) {
+
+    if (bar == NULL) {
+        return false;
+    }
+
+    return _validateChordEntries(bar->firstEntry);
+}
+
 /* Recorre recursivamente los elementos de un Content */
 
 static bool _validateContentElement(ContentElement *element, SymbolTable *table) {
@@ -24,6 +46,12 @@ static bool _validateContentElement(ContentElement *element, SymbolTable *table)
     if (element->type == PATTERN_USAGE_ELEMENT) {
 
         if (!_validatePatternUsage(element->patternUsage, table)) {
+            return false;
+        }
+    }
+    else if(element->type == BAR_ELEMENT) {
+
+        if (!_validateBar(element->bar)) {
             return false;
         }
     }
